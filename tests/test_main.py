@@ -22,5 +22,4 @@ def test_say_hello():
     data = response.json()
     assert data["message"] == "Hello, Alice!"
 
-#TEST
 
