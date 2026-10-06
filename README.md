@@ -46,4 +46,4 @@ In your GitHub Repo: `Settings` ➔ `Secrets and variables` ➔ `Actions`
 * `DOCKERHUB_USERNAME`: Your Docker Hub username
 * `DOCKERHUB_TOKEN`: Your Docker Hub Personal Access Token (PAT)
 
-* CI/CD integration test
+CI/CD integration test - project 10
