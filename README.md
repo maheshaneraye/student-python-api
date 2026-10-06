@@ -47,3 +47,4 @@ In your GitHub Repo: `Settings` ➔ `Secrets and variables` ➔ `Actions`
 * `DOCKERHUB_TOKEN`: Your Docker Hub Personal Access Token (PAT)
 
 CI/CD integration test - project 10
+CI/CD Trivy integration test
