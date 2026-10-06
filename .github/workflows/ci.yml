@@ -65,7 +65,8 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
-          format: "table"
+          format: "json"
+          output: "trivy-report.json"
           exit-code: "0"
           ignore-unfixed: true
           vuln-type: "os,library"
@@ -124,6 +125,37 @@ jobs:
           echo "  Environment: $TARGET_ENV"
           echo "  Commit: ${{ github.sha }}"
 
+          # Extract vulnerability counts from machine-readable Trivy JSON report
+          echo "Extracting Trivy vulnerability scan results..."
+          if [ ! -f trivy-report.json ]; then
+            echo "ERROR: trivy-report.json not found! Security scan is missing or failed."
+            exit 1
+          fi
+
+          CRITICAL_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select((.Severity // "") | ascii_upcase == "CRITICAL")] | length' trivy-report.json)
+          HIGH_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select((.Severity // "") | ascii_upcase == "HIGH")] | length' trivy-report.json)
+          MEDIUM_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select((.Severity // "") | ascii_upcase == "MEDIUM")] | length' trivy-report.json)
+          LOW_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select((.Severity // "") | ascii_upcase == "LOW")] | length' trivy-report.json)
+
+          if [ -z "$CRITICAL_COUNT" ] || [ -z "$HIGH_COUNT" ] || [ -z "$MEDIUM_COUNT" ] || [ -z "$LOW_COUNT" ]; then
+            echo "ERROR: Failed to extract vulnerability counts from trivy-report.json."
+            exit 1
+          fi
+
+          # Derive Trivy status based on scan results (Critical vulnerabilities block deployment)
+          if [ "$CRITICAL_COUNT" -gt 0 ]; then
+            TRIVY_STATUS="FAILED"
+          else
+            TRIVY_STATUS="PASSED"
+          fi
+
+          echo "Trivy Scan Results:"
+          echo "  Critical: $CRITICAL_COUNT"
+          echo "  High:     $HIGH_COUNT"
+          echo "  Medium:   $MEDIUM_COUNT"
+          echo "  Low:      $LOW_COUNT"
+          echo "  Status:   $TRIVY_STATUS"
+
           # Build JSON safely with jq.
           # This prevents commit messages or other values from breaking JSON.
           REQUEST_BODY=$(jq -n \
@@ -134,6 +166,11 @@ jobs:
             --arg environment "$TARGET_ENV" \
             --arg image "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}" \
             --arg imageTag "${{ github.sha }}" \
+            --arg trivyStatus "$TRIVY_STATUS" \
+            --argjson critical "$CRITICAL_COUNT" \
+            --argjson high "$HIGH_COUNT" \
+            --argjson medium "$MEDIUM_COUNT" \
+            --argjson low "$LOW_COUNT" \
             '{
               projectId: ($projectId | tonumber),
               commitSha: $commitSha,
@@ -142,7 +179,13 @@ jobs:
               environment: $environment,
               image: $image,
               imageTag: $imageTag,
-              trivyStatus: "PASSED"
+              trivyStatus: $trivyStatus,
+              trivySummary: {
+                critical: $critical,
+                high: $high,
+                medium: $medium,
+                low: $low
+              }
             }')
 
           echo "Sending deployment request to College Cloud CI/CD Manager..."
